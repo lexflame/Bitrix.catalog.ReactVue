@@ -49,3 +49,94 @@ new Vue({
         }, 'json');
     }
 });
+
+new Vue({
+    el: '#catalog-app',
+    data: {
+        filters: [],
+        items: [],
+        selectedFilters: {},
+        page: 1,
+        totalPages: 1,
+        sortBy: 'NAME',
+        sortOrder: 'ASC',
+        loading: false
+    },
+    methods: {
+        loadItems(reset = false) {
+            if (this.loading || (this.page > this.totalPages && !reset)) return;
+
+            this.loading = true;
+
+            $.get('/local/components/custom/catalog.vueajax/ajax/filter.php', {
+                ajax_filter: 'Y',
+                filter: JSON.stringify(this.selectedFilters),
+                page: this.page,
+                sort_by: this.sortBy,
+                order: this.sortOrder
+            }, (res) => {
+                if (reset) this.items = res.items;
+                else this.items.push(...res.items);
+                this.totalPages = res.totalPages;
+                this.loading = false;
+                this.page++;
+            }, 'json');
+        },
+        onFilterUpdate(filters) {
+            this.selectedFilters = filters;
+            this.page = 1;
+            this.loadItems(true); // reset items
+        },
+        changeSort(field) {
+            if (this.sortBy === field) {
+                this.sortOrder = this.sortOrder === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                this.sortBy = field;
+                this.sortOrder = 'ASC';
+            }
+            this.page = 1;
+            this.loadItems(true);
+        },
+        observeScroll() {
+            const target = this.$refs.infiniteScroll;
+            const observer = new IntersectionObserver(entries => {
+                if (entries[0].isIntersecting) {
+                    this.loadItems();
+                }
+            }, {
+                rootMargin: '200px'
+            });
+            observer.observe(target);
+        },
+        updateUrl() {
+            const params = new URLSearchParams();
+            params.set('filter', JSON.stringify(this.selectedFilters));
+            params.set('sort_by', this.sortBy);
+            params.set('order', this.sortOrder);
+            window.history.pushState({}, '', '?' + params.toString());
+        },
+        loadFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const filter = params.get('filter');
+            const sortBy = params.get('sort_by');
+            const order = params.get('order');
+
+            if (filter) this.selectedFilters = JSON.parse(filter);
+            if (sortBy) this.sortBy = sortBy;
+            if (order) this.sortOrder = order;
+        }
+    },
+    mounted() {
+        this.loadFromUrl();
+
+        // init filters
+        $.get('/local/components/custom/catalog.vueajax/ajax/filter.php', {
+            get_filters: 'Y'
+        }, (data) => {
+            this.filters = data.filters;
+        }, 'json');
+
+        this.loadItems(true);
+        this.observeScroll();
+    }
+});
